@@ -69,11 +69,10 @@ function read-top-pid {
 # ignoring this script if run from one of those shells.
 last_command_pid="$(ps --ppid "$shell_pids" --format 'pid=' --sort +etimes | tr --delete ' ' | read-top-pid)"
 
-# Get the command line of that last command, for helpful messaging.
-last_command_command="$(ps --pid "$last_command_pid" --format 'command=')"
-
 # Use `tail` to wait for the process to finish:
 # https://unix.stackexchange.com/a/427133.
-(( verbose )) && echo >&2 -n "Waiting for process $last_command_pid ($last_command_command) ..."
+(( verbose )) \
+  && echo >&2 -n \
+    "Waiting for process $last_command_pid ($(ps --pid "$last_command_pid" --format 'cmd=')) ..."
 tail --follow --pid="$last_command_pid" /dev/null
 (( verbose )) && echo >&2 ' Done'
