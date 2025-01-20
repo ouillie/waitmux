@@ -1,0 +1,79 @@
+#!/bin/env bash
+
+function print-help {
+  echo "Usage: $0 [OPTIONS]"
+  echo ''
+  echo 'If there is exactly one active tmux session,'
+  echo 'identify the most recently started command in any of its open shells'
+  echo 'and wait for it to complete.'
+  echo ''
+  echo 'OPTIONS'
+  echo '  -v --verbose   Print diagnostic information about the process.'
+  echo '  -h --help      Print this message and exit.'
+}
+
+verbose=0
+for arg in "$@"
+do
+  case "$arg" in
+    -h | --help)
+      print-help
+      exit
+      ;;
+    -v | --verbose)
+      verbose=1
+      ;;
+    *)
+      echo >&2 "Unexpected argument: '$arg'"
+      print-help >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Ensures that only a single PID is written to input,
+# forwarding it to output.
+function read-only-pid {
+  read tmux_pid || {
+    (( verbose )) && echo >&2 'No running tmux session'
+    exit 1
+  }
+  read && {
+    (( verbose )) && echo >&2 'Multiple running tmux sessions'
+    exit 1
+  }
+  echo "$tmux_pid"
+}
+
+# Get the PID of the single tmux session server.
+tmux_pid="$(tmux list-sessions -F '#{pid}' | read-only-pid)"
+
+# Get the PIDs of the shells that are direct children of the tmux session
+# formatted as a comma-separated list with no spaces and no trailing comma.
+shell_pids="$(ps --ppid "$tmux_pid" --format 'pid=' | tr --delete ' ' | tr '\n' ',' | head --bytes=-1)"
+
+# Forwards the first PID from input to output,
+# unless it's the PID of the current process,
+# in which case the second PID is forwarded instead.
+function read-top-pid {
+  read pid || {
+    (( verbose )) && echo >&2 'No tmux commands running'
+    exit 1
+  }
+  self_pid="$$"
+  # Read the next PID if the most recent one is this script.
+  (( pid == self_pid )) && read-top-pid || echo "$pid"
+}
+
+# Get the PID of the most recently started direct child of any of those shells,
+# ignoring this script if run from one of those shells.
+last_command_pid="$(ps --ppid "$shell_pids" --format 'pid=' --sort +etimes | tr --delete ' ' | read-top-pid)"
+
+# Get the command line of that last command, for helpful messaging.
+last_command_command="$(ps --pid "$last_command_pid" --format 'command=')"
+
+# Use `tail` to wait for the process to finish:
+# https://unix.stackexchange.com/a/427133.
+(( verbose )) && echo >&2 -n "Waiting for process $last_command_pid ($last_command_command) ..."
+tail --follow --pid="$last_command_pid" /dev/null
+(( verbose )) && echo >&2 ' Done'
