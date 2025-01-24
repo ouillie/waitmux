@@ -46,11 +46,13 @@ function read-only-pid {
 }
 
 # Get the PID of the single tmux session server.
-tmux_pid="$(tmux list-sessions -F '#{pid}' | read-only-pid)"
+tmux_pid="$(tmux list-sessions -F '#{pid}' | read-only-pid)" \
+  || exit $?
 
 # Get the PIDs of the shells that are direct children of the tmux session
 # formatted as a comma-separated list with no spaces and no trailing comma.
-shell_pids="$(ps --ppid "$tmux_pid" --format 'pid=' | tr --delete ' ' | tr '\n' ',' | head --bytes=-1)"
+shell_pids="$(ps --ppid "$tmux_pid" --format 'pid=' | tr --delete ' ' | tr '\n' ',' | head --bytes=-1)" \
+  || exit $?
 
 # Forwards the first PID from input to output,
 # unless it's the PID of the current process,
@@ -67,7 +69,8 @@ function read-top-pid {
 
 # Get the PID of the most recently started direct child of any of those shells,
 # ignoring this script if run from one of those shells.
-last_command_pid="$(ps --ppid "$shell_pids" --format 'pid=' --sort +etimes | tr --delete ' ' | read-top-pid)"
+last_command_pid="$(ps --ppid "$shell_pids" --format 'pid=' --sort +etimes | tr --delete ' ' | read-top-pid)" \
+  || exit $?
 
 # Use `tail` to wait for the process to finish:
 # https://unix.stackexchange.com/a/427133.
